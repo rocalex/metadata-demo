@@ -69,14 +69,17 @@ pub struct Initialize {}
 pub struct CreateMasterEdition<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
+    /// CHECK:
     #[account(seeds = ["auth".as_bytes()], bump)]
     pub authority: AccountInfo<'info>,
     #[account(init, payer = payer, mint::decimals = 0, mint::authority = authority, mint::freeze_authority = authority)]
     pub mint: Account<'info, Mint>,
     #[account(init, payer = payer, associated_token::mint = mint, associated_token::authority = authority)]
     pub token_account: Account<'info, TokenAccount>,
+    /// CHECK:
     #[account(mut)]
     pub metadata_account: AccountInfo<'info>,
+    /// CHECK:
     #[account(mut)]
     pub edition_account: AccountInfo<'info>,
     pub metadata_program: Program<'info, TokenMetadata>,
