@@ -1,7 +1,6 @@
 use anchor_lang::{prelude::*, solana_program::entrypoint::ProgramResult};
 use anchor_spl::{
     self,
-    associated_token::AssociatedToken,
     token::{self, Mint, Token, TokenAccount},
 };
 use mpl_token_metadata::state::{Collection, Creator, DataV2, UseMethod, Uses};
