@@ -1,4 +1,4 @@
-import * as dotenv from 'dotenv'
+import * as dotenv from "dotenv";
 import * as anchor from "@project-serum/anchor";
 import { Program } from "@project-serum/anchor";
 import {
@@ -13,7 +13,7 @@ import {
 } from "@metaplex-foundation/mpl-token-metadata";
 import { MetadataDemo } from "../target/types/metadata_demo";
 
-dotenv.config()
+dotenv.config();
 
 const options = anchor.AnchorProvider.defaultOptions();
 const connection = new anchor.web3.Connection(

@@ -12,10 +12,6 @@ declare_id!("AtnsRniY7WdEban5BDenyDD8bD63JijL8EC1gn9SpZ3L");
 pub mod metadata_demo {
     use super::*;
 
-    pub fn initialize(_ctx: Context<Initialize>) -> Result<()> {
-        Ok(())
-    }
-
     pub fn create_master_edition(
         ctx: Context<CreateMasterEdition>,
         data: AnchorDataV2,
@@ -62,9 +58,6 @@ pub mod metadata_demo {
     }
 }
 
-#[derive(Accounts)]
-pub struct Initialize {}
-
 #[derive(Accounts, Clone)]
 pub struct CreateMasterEdition<'info> {
     #[account(mut)]
@@ -72,10 +65,12 @@ pub struct CreateMasterEdition<'info> {
     /// CHECK:
     #[account(seeds = ["auth".as_bytes()], bump)]
     pub authority: AccountInfo<'info>,
-    #[account(init, payer = payer, mint::decimals = 0, mint::authority = authority, mint::freeze_authority = authority)]
+    #[account(mut, mint::decimals = 0, mint::authority = authority, mint::freeze_authority = authority)]
     pub mint: Account<'info, Mint>,
-    #[account(init, payer = payer, associated_token::mint = mint, associated_token::authority = authority)]
+    #[account(mut)]
     pub token_account: Account<'info, TokenAccount>,
+    /// CHECK:
+    pub user: AccountInfo<'info>,
     /// CHECK:
     #[account(mut)]
     pub metadata_account: AccountInfo<'info>,
@@ -84,7 +79,6 @@ pub struct CreateMasterEdition<'info> {
     pub edition_account: AccountInfo<'info>,
     pub metadata_program: Program<'info, TokenMetadata>,
     pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
     pub rent: Sysvar<'info, Rent>,
     pub system_program: Program<'info, System>,
 }

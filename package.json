@@ -6,11 +6,12 @@
     },
     "dependencies": {
         "@metaplex-foundation/mpl-token-metadata": "^1.2.5",
-        "@project-serum/anchor": "^0.24.2",
-        "@solana/spl-token": "^0.2.0",
+        "@project-serum/anchor": "^0.25.0-beta.1",
+        "@project-serum/common": "^0.0.1-beta.3",
         "dotenv": "^16.0.1"
     },
     "devDependencies": {
+        "@types/bn.js": "^5.1.0",
         "@types/chai": "^4.3.0",
         "@types/mocha": "^9.0.0",
         "@types/node": "^17.0.41",
