@@ -17,6 +17,10 @@ pub mod metadata_demo {
         is_mutable: bool,
         max_supply: Option<u64>,
     ) -> Result<()> {
+        if ctx.accounts.token_account.owner != ctx.accounts.user.key() {
+            return Err(MyError::InvalidUser.into());
+        }
+
         let mint_to_ctx = token::MintTo {
             mint: ctx.accounts.mint.to_account_info(),
             to: ctx.accounts.token_account.to_account_info(),
@@ -258,4 +262,10 @@ impl anchor_lang::Id for TokenMetadata {
     fn id() -> Pubkey {
         mpl_token_metadata::ID
     }
+}
+
+#[error_code]
+pub enum MyError {
+    #[msg("invalid user")]
+    InvalidUser
 }
