@@ -1,8 +1,12 @@
 import assert from "assert";
 import * as anchor from "@project-serum/anchor";
-import { Program, AnchorProvider } from "@project-serum/anchor";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { PublicKey } from "@solana/web3.js";
+import { Program } from "@project-serum/anchor";
+import {
+  createMint,
+  getOrCreateAssociatedTokenAccount,
+  getMint
+} from "@solana/spl-token";
+import { PublicKey, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
   MetadataProgram,
   DataV2,
@@ -10,6 +14,7 @@ import {
   MasterEdition,
 } from "@metaplex-foundation/mpl-token-metadata";
 import { MetadataDemo } from "../target/types/metadata_demo";
+import { BN } from "bn.js";
 
 const encode = anchor.utils.bytes.utf8.encode;
 
@@ -20,13 +25,31 @@ describe("metadata-demo", () => {
   const program = anchor.workspace.MetadataDemo as Program<MetadataDemo>;
 
   let mint: PublicKey;
+  let payer: Keypair;
 
   before(async () => {
     const [authority] = await anchor.web3.PublicKey.findProgramAddress(
       [encode("auth")],
       program.programId
     );
-    mint = await createMint(provider, authority);
+    payer = Keypair.generate();
+    const airdropSignature = await provider.connection.requestAirdrop(
+      payer.publicKey,
+      LAMPORTS_PER_SOL
+    );
+    const blockhash = await provider.connection.getLatestBlockhash();
+    await provider.connection.confirmTransaction({
+      blockhash: blockhash.blockhash,
+      lastValidBlockHeight: blockhash.lastValidBlockHeight,
+      signature: airdropSignature,
+    });
+    mint = await createMint(
+      provider.connection,
+      payer,
+      authority,
+      authority,
+      0
+    );
   });
 
   it("Create metadata", async () => {
@@ -37,8 +60,9 @@ describe("metadata-demo", () => {
       program.programId
     );
 
-    const tokenAccount = await createTokenAccount(
-      provider,
+    let tokenAccount = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      payer,
       mint,
       user.publicKey
     );
@@ -60,115 +84,32 @@ describe("metadata-demo", () => {
       // @ts-ignore
       .createMasterEdition(data, true, null)
       .accounts({
-        payer: provider.wallet.publicKey,
+        payer: payer.publicKey,
         authority,
         mint,
         user: user.publicKey,
-        tokenAccount,
+        tokenAccount: tokenAccount.address,
         metadataAccount,
         editionAccount,
         metadataProgram: MetadataProgram.PUBKEY,
       })
+      .signers([payer])
       .rpc();
     console.log("Your transaction signature", tx);
 
-    const mintInfo = await getMintInfo(provider, mint);
-    const tokenAccountAccount = await getTokenAccount(provider, tokenAccount);
+    const mintInfo = await getMint(provider.connection, mint);
+
+    tokenAccount = await getOrCreateAssociatedTokenAccount(
+      provider.connection,
+      payer,
+      mint,
+      user.publicKey
+    );
 
     assert.ok(mintInfo.decimals == 0)
-    assert.ok(mintInfo.supply.eq(new anchor.BN(1)))
+    assert.ok((new BN(1)).eq(new BN(mintInfo.supply.toString())))
 
-    assert.ok(tokenAccountAccount.owner.equals(user.publicKey))
-    assert.ok(tokenAccountAccount.amount.eq(new anchor.BN(1)))
+    assert.ok(tokenAccount.owner.equals(user.publicKey))
+    assert.ok((new BN(tokenAccount.amount.toString())).eq(new anchor.BN(1)))
   });
 });
-
-import * as serumCmn from "@project-serum/common";
-import { TokenInstructions } from "@project-serum/serum";
-
-async function getTokenAccount(provider, addr: PublicKey) {
-  return await serumCmn.getTokenAccount(provider, addr);
-}
-
-async function getMintInfo(provider, mintAddr: PublicKey) {
-  return await serumCmn.getMintInfo(provider, mintAddr);
-}
-
-async function createMint(provider: AnchorProvider, authority: PublicKey) {
-  const mint = anchor.web3.Keypair.generate();
-  const instructions = await createMintInstructions(
-    provider,
-    authority,
-    mint.publicKey
-  );
-
-  const tx = new anchor.web3.Transaction();
-  tx.add(...instructions);
-
-  await provider.sendAndConfirm(tx, [mint]);
-
-  return mint.publicKey;
-}
-
-async function createMintInstructions(
-  provider: AnchorProvider,
-  authority: PublicKey,
-  mint: PublicKey
-) {
-  let instructions = [
-    anchor.web3.SystemProgram.createAccount({
-      fromPubkey: provider.wallet.publicKey,
-      newAccountPubkey: mint,
-      space: 82,
-      lamports: await provider.connection.getMinimumBalanceForRentExemption(82),
-      programId: TOKEN_PROGRAM_ID,
-    }),
-    TokenInstructions.initializeMint({
-      mint,
-      decimals: 0,
-      mintAuthority: authority,
-      freezeAuthority: authority,
-    }),
-  ];
-  return instructions;
-}
-
-async function createTokenAccount(
-  provider: AnchorProvider,
-  mint: PublicKey,
-  owner: PublicKey
-) {
-  const vault = anchor.web3.Keypair.generate();
-  const tx = new anchor.web3.Transaction();
-  tx.add(
-    ...(await createTokenAccountInstrs(provider, vault.publicKey, mint, owner))
-  );
-  await provider.sendAndConfirm(tx, [vault]);
-  return vault.publicKey;
-}
-
-async function createTokenAccountInstrs(
-  provider: AnchorProvider,
-  newAccountPubkey: PublicKey,
-  mint: PublicKey,
-  owner: PublicKey,
-  lamports: number = undefined
-) {
-  if (lamports === undefined) {
-    lamports = await provider.connection.getMinimumBalanceForRentExemption(165);
-  }
-  return [
-    anchor.web3.SystemProgram.createAccount({
-      fromPubkey: provider.wallet.publicKey,
-      newAccountPubkey,
-      space: 165,
-      lamports,
-      programId: TOKEN_PROGRAM_ID,
-    }),
-    TokenInstructions.initializeAccount({
-      account: newAccountPubkey,
-      mint,
-      owner,
-    }),
-  ];
-}
