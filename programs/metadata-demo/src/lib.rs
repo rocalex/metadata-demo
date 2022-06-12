@@ -8,7 +8,7 @@ use anchor_spl::{
     token::{self, Mint, Token, TokenAccount},
 };
 use mpl_token_metadata::state::{Collection, Creator, DataV2, UseMethod, Uses};
-use state::{Bridge, Action};
+use state::{Bridge, Action, ConsumedAction};
 
 declare_id!("AtnsRniY7WdEban5BDenyDD8bD63JijL8EC1gn9SpZ3L");
 
@@ -37,6 +37,16 @@ pub mod metadata_demo {
         if ctx.accounts.token_account.owner != ctx.accounts.user.key() {
             return Err(MyError::InvalidUser.into());
         }
+
+        let action = &mut ctx.accounts.action;
+        let consumed_action = &mut ctx.accounts.consumed_action;
+        if data.action_id != action.action {
+            return Err(error::ErrorCode::InvalidActionId.into());
+        }
+        if consumed_action.consumed {
+            return Err(error::ErrorCode::DuplicatedAction.into());
+        }
+        consumed_action.consumed = true;
 
         validate_action(&ctx.accounts.instruction_acc, bridge, data.try_to_vec()?)?;
 
@@ -110,6 +120,7 @@ pub struct CreateAction<'info> {
 
 #[derive(AnchorDeserialize, AnchorSerialize)]
 pub struct CreateNftData {
+    action_id: u64,
     token_name: String,
     token_symbol: String,
     token_uri: String,
@@ -141,6 +152,17 @@ pub struct CreateMasterEdition<'info> {
     pub rent: Sysvar<'info, Rent>,
     /// CHECK:
     pub instruction_acc: AccountInfo<'info>,
+    pub action: Account<'info, Action>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + 1,
+        seeds = [
+            action.action.to_le_bytes().as_ref(),
+        ],
+        bump
+    )]
+    pub consumed_action: Account<'info, ConsumedAction>,
     pub system_program: Program<'info, System>,
 }
 

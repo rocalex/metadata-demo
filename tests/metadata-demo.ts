@@ -1,5 +1,5 @@
 import assert from "assert";
-import * as fs from 'fs';
+import * as fs from "fs";
 import * as anchor from "@project-serum/anchor";
 import { Program } from "@project-serum/anchor";
 import { TOKEN_PROGRAM_ID, Token } from "@solana/spl-token";
@@ -11,7 +11,7 @@ import {
   LAMPORTS_PER_SOL,
   Struct,
   SystemProgram,
-  SYSVAR_INSTRUCTIONS_PUBKEY
+  SYSVAR_INSTRUCTIONS_PUBKEY,
 } from "@solana/web3.js";
 import {
   MetadataProgram,
@@ -28,6 +28,8 @@ import { createHash } from "crypto";
 const encode = anchor.utils.bytes.utf8.encode;
 
 class CreateNftData extends Struct {
+  @field({ type: "u64" })
+  actionId: anchor.BN;
   @field({ type: "String" })
   tokenName: string;
   @field({ type: "String" })
@@ -42,13 +44,13 @@ describe("metadata-demo", () => {
   const options = anchor.AnchorProvider.defaultOptions();
   const connection = new Connection(url, options.commitment);
   const payer = Keypair.fromSecretKey(
-      Buffer.from(
-          JSON.parse(
-              fs.readFileSync(process.env.ANCHOR_WALLET, {
-                  encoding: "utf-8",
-              })
-          )
+    Buffer.from(
+      JSON.parse(
+        fs.readFileSync(process.env.ANCHOR_WALLET, {
+          encoding: "utf-8",
+        })
       )
+    )
   );
   const wallet = new anchor.Wallet(payer);
   const provider = new anchor.AnchorProvider(connection, wallet, options);
@@ -69,7 +71,7 @@ describe("metadata-demo", () => {
       [encode("auth")],
       program.programId
     );
-    
+
     mint = await Token.createMint(
       provider.connection,
       payer,
@@ -101,7 +103,24 @@ describe("metadata-demo", () => {
   });
 
   it("Create metadata", async () => {
+    const actionId = new anchor.BN(1);
+    const action = anchor.web3.Keypair.generate();
+    let tx = await program.methods
+      .createAction(actionId)
+      .accounts({
+        action: action.publicKey,
+      })
+      .signers([action])
+      .rpc();
+
+    console.log("transaction signature", tx);
+
     const user = anchor.web3.Keypair.generate();
+
+    const [consumedAction, _] = await PublicKey.findProgramAddress(
+      [actionId.toArrayLike(Buffer, "le", 8)],
+      program.programId
+    );
 
     const [authority] = await anchor.web3.PublicKey.findProgramAddress(
       [encode("auth")],
@@ -113,29 +132,29 @@ describe("metadata-demo", () => {
     );
 
     const data = new CreateNftData({
+      actionId,
       tokenName: "Test",
       tokenSymbol: "wNFT",
       tokenUri:
         "https://v6ahotwazrvostarjcejqieltkiy5ireq7rwlqss4iezbgngakla.arweave.net/r4B3TsDMaulMEUiImCCLmpGOoiSH42XCUuIJkJmmApY/",
-    })
+    });
 
     const metadataAccount = await Metadata.getPDA(tokenAccount.mint);
     const editionAccount = await MasterEdition.getPDA(tokenAccount.mint);
 
-    const message = serialize(data)
-    const msgHash = createHash("SHA256").update(message).digest()
-    const signature = await ed.sign(msgHash, privateKey)
+    const message = serialize(data);
+    const msgHash = createHash("SHA256").update(message).digest();
+    const signature = await ed.sign(msgHash, privateKey);
     const verifyInstruction = Ed25519Program.createInstructionWithPublicKey({
       publicKey: groupKey,
       message: msgHash,
       signature: signature,
-    })
+    });
 
-    const tx = await program.methods
+    tx = await program.methods
       .createMasterEdition(data)
       .accounts({
         bridge,
-        payer: payer.publicKey,
         authority,
         mint: tokenAccount.mint,
         user: user.publicKey,
@@ -144,8 +163,9 @@ describe("metadata-demo", () => {
         editionAccount,
         metadataProgram: MetadataProgram.PUBKEY,
         instructionAcc: SYSVAR_INSTRUCTIONS_PUBKEY,
+        action: action.publicKey,
+        consumedAction
       })
-      .signers([payer])
       .preInstructions([verifyInstruction])
       .rpc();
     console.log("Your transaction signature", tx);

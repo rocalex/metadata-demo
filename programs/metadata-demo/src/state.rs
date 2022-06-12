@@ -10,3 +10,8 @@ pub struct Bridge {
 pub struct Action {
     pub action: u64,
 }
+
+#[account]
+pub struct ConsumedAction {
+    pub consumed: bool,
+}
