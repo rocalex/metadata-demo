@@ -64,6 +64,7 @@ describe("metadata-demo", () => {
   let groupKey: Uint8Array;
   let mint: Token;
   let bridge: PublicKey;
+  let user: Keypair;
 
   before(async () => {
     privateKey = ed.utils.randomPrivateKey();
@@ -88,6 +89,8 @@ describe("metadata-demo", () => {
       program.programId
     );
     bridge = b;
+
+    user = Keypair.generate()
   });
 
   it("Initialize", async () => {
@@ -127,7 +130,7 @@ describe("metadata-demo", () => {
       program.programId
     );
 
-    let tokenAccount = await mint.getOrCreateAssociatedAccountInfo(provider.wallet.publicKey);
+    let tokenAccount = await mint.getOrCreateAssociatedAccountInfo(user.publicKey);
 
     const data = new CreateNftData({
       actionId,
@@ -135,7 +138,7 @@ describe("metadata-demo", () => {
       tokenSymbol: "wNFT",
       tokenUri:
         "https://v6ahotwazrvostarjcejqieltkiy5ireq7rwlqss4iezbgngakla.arweave.net/r4B3TsDMaulMEUiImCCLmpGOoiSH42XCUuIJkJmmApY/",
-      owner: [...provider.wallet.publicKey.toBuffer()],
+      owner: [...user.publicKey.toBuffer()],
     });
 
     const metadataAccount = await Metadata.getPDA(tokenAccount.mint);
@@ -167,52 +170,21 @@ describe("metadata-demo", () => {
       .preInstructions([verifyInstruction])
       .rpc();
     console.log("Your transaction signature", tx);
-
-    const mintInfo = await mint.getMintInfo();
-
-    tokenAccount = await mint.getOrCreateAssociatedAccountInfo(provider.wallet.publicKey);
-
-    assert.ok(mintInfo.decimals == 0);
-    assert.ok(new BN(1).eq(new BN(mintInfo.supply.toString())));
-
-    assert.ok(tokenAccount.owner.equals(provider.wallet.publicKey));
-    assert.ok(new BN(tokenAccount.amount.toString()).eq(new anchor.BN(1)));
-  });
-
-  it("Transfers a token", async () => {
-    const tokenAccount = await mint.getOrCreateAssociatedAccountInfo(provider.wallet.publicKey);
-    const tx = await program.methods
-      .proxyTransfer()
-      .accounts({
-        authority: provider.wallet.publicKey,
-        tokenAccount: tokenAccount.address,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .rpc();
-
-    console.log("Your transaction signature", tx);
-
-    // const fromAccount = await getTokenAccount(provider, from);
-    // const toAccount = await getTokenAccount(provider, to);
-
-    // assert.isTrue(fromAccount.amount.eq(new anchor.BN(600)));
-    // assert.isTrue(toAccount.amount.eq(new anchor.BN(400)));
   });
 
   it("Burns a token", async () => {
-    const tokenAccount = await mint.getOrCreateAssociatedAccountInfo(provider.wallet.publicKey);
+    const tokenAccount = await mint.getOrCreateAssociatedAccountInfo(user.publicKey);
     const tx = await program.methods
       .proxyBurn()
       .accounts({
-        authority: provider.wallet.publicKey,
+        authority: user.publicKey,
         mint: tokenAccount.mint,
-        from: tokenAccount.address,
+        tokenAccount: tokenAccount.address,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
+      .signers([user])
       .rpc();
 
     console.log("Your transaction signature", tx);
-    // const toAccount = await getTokenAccount(provider, to);
-    // assert.isTrue(toAccount.amount.eq(new anchor.BN(1)));
   });
 });

@@ -5,7 +5,7 @@ pub mod utils;
 use anchor_lang::{prelude::*, solana_program::entrypoint::ProgramResult};
 use anchor_spl::{
     self,
-    token::{self, Burn, Mint, Token, TokenAccount, Transfer},
+    token::{self, Burn, Mint, Token, TokenAccount},
 };
 use mpl_token_metadata::state::{Collection, Creator, DataV2, UseMethod, Uses};
 use state::{Action, Bridge, ConsumedAction};
@@ -31,18 +31,22 @@ pub mod metadata_demo {
 
     pub fn proxy_mint_to(ctx: Context<ProxyMintTo>, data: CreateNftData) -> Result<()> {
         let bridge = &mut ctx.accounts.bridge;
+        let action = &mut ctx.accounts.action;
+        let consumed_action = &mut ctx.accounts.consumed_action;
+
         if ctx.accounts.token_account.owner != Pubkey::new_from_array(data.owner) {
             return Err(MyError::InvalidUser.into());
         }
-
-        let action = &mut ctx.accounts.action;
-        let consumed_action = &mut ctx.accounts.consumed_action;
         if data.action_id != action.action {
             return Err(error::ErrorCode::InvalidActionId.into());
         }
         if consumed_action.consumed {
             return Err(error::ErrorCode::DuplicatedAction.into());
         }
+        if ctx.accounts.mint.supply == 1 {
+            return Err(error::ErrorCode::AlreadyMinted.into());
+        }
+
         consumed_action.consumed = true;
 
         validate_action(&ctx.accounts.instruction_acc, bridge, data.try_to_vec()?)?;
@@ -96,26 +100,10 @@ pub mod metadata_demo {
         Ok(())
     }
 
-    pub fn proxy_transfer(ctx: Context<ProxyTransfer>) -> Result<()> {
-        let transfer_ctx = Transfer {
-            from: ctx.accounts.token_account.to_account_info(),
-            to: ctx.accounts.token_account.to_account_info(),
-            authority: ctx.accounts.authority.to_account_info(),
-        };
-        token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(), 
-                transfer_ctx
-            ),
-            1,
-        )?;
-        Ok(())
-    }
-
     pub fn proxy_burn(ctx: Context<ProxyBurn>) -> Result<()> {
         let burn_ctx = Burn {
             mint: ctx.accounts.mint.to_account_info(),
-            from: ctx.accounts.from.to_account_info(),
+            from: ctx.accounts.token_account.to_account_info(),
             authority: ctx.accounts.authority.to_account_info(),
         };
 
@@ -125,7 +113,8 @@ pub mod metadata_demo {
                 burn_ctx
             ),
             1
-        )
+        )?;
+        Ok(())
     }
 }
 
@@ -195,22 +184,13 @@ pub struct ProxyMintTo<'info> {
 }
 
 #[derive(Accounts)]
-pub struct ProxyTransfer<'info> {
-    #[account(mut)]
-    pub authority: Signer<'info>,
-    #[account(mut)]
-    pub token_account: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
-}
-
-#[derive(Accounts)]
 pub struct ProxyBurn<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
     #[account(mut)]
     pub mint: Account<'info, Mint>,
     #[account(mut)]
-    pub from: Account<'info, TokenAccount>,
+    pub token_account: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
 }
 
