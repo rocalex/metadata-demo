@@ -5,10 +5,10 @@ pub mod utils;
 use anchor_lang::{prelude::*, solana_program::entrypoint::ProgramResult};
 use anchor_spl::{
     self,
-    token::{self, Mint, Token, TokenAccount},
+    token::{self, Burn, Mint, Token, TokenAccount, Transfer},
 };
 use mpl_token_metadata::state::{Collection, Creator, DataV2, UseMethod, Uses};
-use state::{Bridge, Action, ConsumedAction};
+use state::{Action, Bridge, ConsumedAction};
 
 declare_id!("AtnsRniY7WdEban5BDenyDD8bD63JijL8EC1gn9SpZ3L");
 
@@ -18,7 +18,7 @@ pub mod metadata_demo {
 
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>, group_key: [u8; 32],) -> Result<()> {
+    pub fn initialize(ctx: Context<Initialize>, group_key: [u8; 32]) -> Result<()> {
         ctx.accounts.bridge.action_cnt = 0;
         ctx.accounts.bridge.group_key = group_key;
         Ok(())
@@ -29,12 +29,9 @@ pub mod metadata_demo {
         Ok(())
     }
 
-    pub fn create_master_edition(
-        ctx: Context<CreateMasterEdition>,
-        data: CreateNftData,
-    ) -> Result<()> {
+    pub fn proxy_mint_to(ctx: Context<ProxyMintTo>, data: CreateNftData) -> Result<()> {
         let bridge = &mut ctx.accounts.bridge;
-        if ctx.accounts.token_account.owner != Pubkey::new_from_array(data.owner){
+        if ctx.accounts.token_account.owner != Pubkey::new_from_array(data.owner) {
             return Err(MyError::InvalidUser.into());
         }
 
@@ -98,6 +95,38 @@ pub mod metadata_demo {
         )?;
         Ok(())
     }
+
+    pub fn proxy_transfer(ctx: Context<ProxyTransfer>) -> Result<()> {
+        let transfer_ctx = Transfer {
+            from: ctx.accounts.token_account.to_account_info(),
+            to: ctx.accounts.token_account.to_account_info(),
+            authority: ctx.accounts.authority.to_account_info(),
+        };
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(), 
+                transfer_ctx
+            ),
+            1,
+        )?;
+        Ok(())
+    }
+
+    pub fn proxy_burn(ctx: Context<ProxyBurn>) -> Result<()> {
+        let burn_ctx = Burn {
+            mint: ctx.accounts.mint.to_account_info(),
+            from: ctx.accounts.from.to_account_info(),
+            authority: ctx.accounts.authority.to_account_info(),
+        };
+
+        token::burn(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                burn_ctx
+            ),
+            1
+        )
+    }
 }
 
 #[derive(Accounts)]
@@ -128,7 +157,7 @@ pub struct CreateNftData {
 }
 
 #[derive(Accounts, Clone)]
-pub struct CreateMasterEdition<'info> {
+pub struct ProxyMintTo<'info> {
     #[account(mut, seeds = [b"xp_bridge".as_ref()], bump)]
     pub bridge: Account<'info, Bridge>,
     #[account(mut)]
@@ -163,6 +192,26 @@ pub struct CreateMasterEdition<'info> {
     )]
     pub consumed_action: Account<'info, ConsumedAction>,
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ProxyTransfer<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(mut)]
+    pub token_account: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct ProxyBurn<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(mut)]
+    pub mint: Account<'info, Mint>,
+    #[account(mut)]
+    pub from: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, PartialEq, Debug, Clone)]
@@ -267,7 +316,7 @@ impl From<AnchorUseMethod> for UseMethod {
 }
 
 pub fn create_metadata_accounts_v2<'a, 'b, 'c, 'info>(
-    ctx: CpiContext<'a, 'b, 'c, 'info, CreateMasterEdition<'info>>,
+    ctx: CpiContext<'a, 'b, 'c, 'info, ProxyMintTo<'info>>,
     update_authority_is_signer: bool,
     is_mutable: bool,
     data: DataV2,
@@ -305,7 +354,7 @@ pub fn create_metadata_accounts_v2<'a, 'b, 'c, 'info>(
 }
 
 pub fn create_master_edition_v3<'a, 'b, 'c, 'info>(
-    ctx: CpiContext<'a, 'b, 'c, 'info, CreateMasterEdition<'info>>,
+    ctx: CpiContext<'a, 'b, 'c, 'info, ProxyMintTo<'info>>,
     max_supply: Option<u64>,
 ) -> ProgramResult {
     let ix = mpl_token_metadata::instruction::create_master_edition_v3(
