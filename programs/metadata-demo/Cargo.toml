@@ -18,4 +18,5 @@ default = []
 [dependencies]
 anchor-lang = "0.24.2"
 anchor-spl = "0.24.2"
+byteorder = "1.4.3"
 mpl-token-metadata = { version = "1.2.4", features = ["no-entrypoint"] }

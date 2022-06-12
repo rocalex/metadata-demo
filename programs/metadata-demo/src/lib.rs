@@ -1,25 +1,44 @@
+pub mod error;
+pub mod state;
+pub mod utils;
+
 use anchor_lang::{prelude::*, solana_program::entrypoint::ProgramResult};
 use anchor_spl::{
     self,
     token::{self, Mint, Token, TokenAccount},
 };
 use mpl_token_metadata::state::{Collection, Creator, DataV2, UseMethod, Uses};
+use state::{Bridge, Action};
 
 declare_id!("AtnsRniY7WdEban5BDenyDD8bD63JijL8EC1gn9SpZ3L");
 
 #[program]
 pub mod metadata_demo {
+    use crate::utils::validate_action;
+
     use super::*;
+
+    pub fn initialize(ctx: Context<Initialize>, group_key: [u8; 32],) -> Result<()> {
+        ctx.accounts.bridge.action_cnt = 0;
+        ctx.accounts.bridge.group_key = group_key;
+        Ok(())
+    }
+
+    pub fn create_action(ctx: Context<CreateAction>, action: u64) -> Result<()> {
+        ctx.accounts.action.action = action;
+        Ok(())
+    }
 
     pub fn create_master_edition(
         ctx: Context<CreateMasterEdition>,
-        data: AnchorDataV2,
-        is_mutable: bool,
-        max_supply: Option<u64>,
+        data: CreateNftData,
     ) -> Result<()> {
+        let bridge = &mut ctx.accounts.bridge;
         if ctx.accounts.token_account.owner != ctx.accounts.user.key() {
             return Err(MyError::InvalidUser.into());
         }
+
+        validate_action(&ctx.accounts.instruction_acc, bridge, data.try_to_vec()?)?;
 
         let mint_to_ctx = token::MintTo {
             mint: ctx.accounts.mint.to_account_info(),
@@ -28,6 +47,16 @@ pub mod metadata_demo {
         };
 
         let auth_seeds = ["auth".as_bytes(), &[ctx.bumps["authority"]]];
+
+        let datav2 = AnchorDataV2 {
+            name: data.token_name,
+            symbol: data.token_symbol,
+            uri: data.token_uri,
+            seller_fee_basis_points: 0,
+            creators: None,
+            collection: None,
+            uses: None,
+        };
 
         token::mint_to(
             CpiContext::new_with_signer(
@@ -45,8 +74,8 @@ pub mod metadata_demo {
                 &[&auth_seeds],
             ),
             false,
-            is_mutable,
-            data.into(),
+            true,
+            datav2.into(),
         )?;
 
         create_master_edition_v3(
@@ -55,14 +84,41 @@ pub mod metadata_demo {
                 ctx.accounts.clone(),
                 &[&auth_seeds],
             ),
-            max_supply,
+            None,
         )?;
         Ok(())
     }
 }
 
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(init, payer = user, space = 8 + 48, seeds = [b"xp_bridge".as_ref()], bump)]
+    pub bridge: Account<'info, Bridge>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct CreateAction<'info> {
+    #[account(init, payer = user, space = 8 + 98)]
+    pub action: Account<'info, Action>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(AnchorDeserialize, AnchorSerialize)]
+pub struct CreateNftData {
+    token_name: String,
+    token_symbol: String,
+    token_uri: String,
+}
+
 #[derive(Accounts, Clone)]
 pub struct CreateMasterEdition<'info> {
+    #[account(mut, seeds = [b"xp_bridge".as_ref()], bump)]
+    pub bridge: Account<'info, Bridge>,
     #[account(mut)]
     pub payer: Signer<'info>,
     /// CHECK:
@@ -83,6 +139,8 @@ pub struct CreateMasterEdition<'info> {
     pub metadata_program: Program<'info, TokenMetadata>,
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,
+    /// CHECK:
+    pub instruction_acc: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -267,5 +325,5 @@ impl anchor_lang::Id for TokenMetadata {
 #[error_code]
 pub enum MyError {
     #[msg("invalid user")]
-    InvalidUser
+    InvalidUser,
 }
