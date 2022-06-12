@@ -22,7 +22,7 @@ import {
 import * as ed from "@noble/ed25519";
 import { MetadataDemo } from "../target/types/metadata_demo";
 import { BN } from "bn.js";
-import { field, serialize } from "@dao-xyz/borsh";
+import { field, fixedArray, serialize } from "@dao-xyz/borsh";
 import { createHash } from "crypto";
 
 const encode = anchor.utils.bytes.utf8.encode;
@@ -36,6 +36,8 @@ class CreateNftData extends Struct {
   tokenSymbol: string;
   @field({ type: "String" })
   tokenUri: string;
+  @field({ type: fixedArray("u8", 32) })
+  owner: number[];
 }
 
 describe("metadata-demo", () => {
@@ -137,6 +139,7 @@ describe("metadata-demo", () => {
       tokenSymbol: "wNFT",
       tokenUri:
         "https://v6ahotwazrvostarjcejqieltkiy5ireq7rwlqss4iezbgngakla.arweave.net/r4B3TsDMaulMEUiImCCLmpGOoiSH42XCUuIJkJmmApY/",
+      owner: [...(user.publicKey.toBuffer())]
     });
 
     const metadataAccount = await Metadata.getPDA(tokenAccount.mint);
@@ -157,7 +160,6 @@ describe("metadata-demo", () => {
         bridge,
         authority,
         mint: tokenAccount.mint,
-        user: user.publicKey,
         tokenAccount: tokenAccount.address,
         metadataAccount,
         editionAccount,

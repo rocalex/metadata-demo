@@ -34,7 +34,7 @@ pub mod metadata_demo {
         data: CreateNftData,
     ) -> Result<()> {
         let bridge = &mut ctx.accounts.bridge;
-        if ctx.accounts.token_account.owner != ctx.accounts.user.key() {
+        if ctx.accounts.token_account.owner != Pubkey::new_from_array(data.owner){
             return Err(MyError::InvalidUser.into());
         }
 
@@ -124,6 +124,7 @@ pub struct CreateNftData {
     token_name: String,
     token_symbol: String,
     token_uri: String,
+    owner: [u8; 32],
 }
 
 #[derive(Accounts, Clone)]
@@ -139,8 +140,6 @@ pub struct CreateMasterEdition<'info> {
     pub mint: Account<'info, Mint>,
     #[account(mut)]
     pub token_account: Account<'info, TokenAccount>,
-    /// CHECK:
-    pub user: AccountInfo<'info>,
     /// CHECK:
     #[account(mut)]
     pub metadata_account: AccountInfo<'info>,
